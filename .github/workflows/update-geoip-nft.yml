@@ -1,0 +1,91 @@
+name: Update GeoIP NFT
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 3 * * *"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: opennikki-master-writes
+  cancel-in-progress: false
+
+env:
+  GEOIP_SOURCE_URL: https://raw.githubusercontent.com/vitoegg/Provider/master/RuleSet/Extra/MosDNS/geoip.txt
+  TARGET_BRANCH: master
+
+jobs:
+  update:
+    name: Refresh GeoIP nft rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Refresh nft rules
+        run: |
+          python3 maint/scripts/update-geoip-nft.py --url "${GEOIP_SOURCE_URL}"
+          [ ! -e maint/nikki ] || {
+            echo "Unexpected GeoIP output under maint/nikki" >&2
+            exit 1
+          }
+
+      - name: Commit and push changes
+        run: |
+          set -eu
+          . maint/scripts/workflow-writeback.sh
+          workflow_writeback_config_git
+
+          git add nikki/files/nftables/geoip_cn.nft nikki/files/nftables/geoip6_cn.nft
+
+          if ! workflow_writeback_has_staged_changes; then
+            {
+              echo "## GeoIP nft update result"
+              echo
+              echo "- Status: no changes"
+              echo "- Target branch: \`${TARGET_BRANCH}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          git commit -m "chore(geoip): refresh nft rules" \
+            -m "Source: ${GEOIP_SOURCE_URL}" \
+            -m "Mode: refresh GeoIP nft rules"
+          commit_sha="$(workflow_writeback_head_sha)"
+          git push origin HEAD:${TARGET_BRANCH}
+
+          {
+            echo "## GeoIP nft update result"
+            echo
+            echo "- Status: pushed"
+            echo "- Target branch: \`${TARGET_BRANCH}\`"
+            echo "- Commit: \`${commit_sha}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Summarize failed result
+        if: failure()
+        run: |
+          {
+            echo "## GeoIP nft update result"
+            echo
+            echo "- Status: failed"
+            echo "- Target branch: \`${TARGET_BRANCH}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Delete Workflow Runs
+        if: always()
+        uses: ophub/delete-releases-workflows@main
+        with:
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
+          delete_releases: true
+          releases_keep_latest: 0
+          delete_tags: true
+          delete_workflows: true
+          workflows_keep_day: 0

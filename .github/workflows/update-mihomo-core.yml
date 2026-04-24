@@ -1,0 +1,162 @@
+name: Update Mihomo Core
+
+on:
+  schedule:
+    # 每天 北京时间 8:30 定时执行（UTC 00:30）
+    - cron: '30 0 * * *'
+  workflow_dispatch:
+    # 支持手动触发
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: opennikki-master-writes
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Check and Update Mihomo Meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MAKEFILE_PATH: mihomo-meta/Makefile
+      UPSTREAM_REPO: MetaCubeX/mihomo
+      TARGET_BRANCH: master
+      GH_TOKEN: ${{ github.token }}
+      TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+      TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Refresh mihomo-meta Makefile
+        id: meta
+        run: |
+          sh maint/scripts/update-mihomo-core.sh
+
+      - name: Commit and push changes
+        if: steps.meta.outputs.need_update == 'true'
+        id: writeback
+        run: |
+          set -euo pipefail
+          . maint/scripts/workflow-writeback.sh
+          workflow_writeback_config_git
+
+          git add "${MAKEFILE_PATH}"
+
+          if ! workflow_writeback_has_staged_changes; then
+            echo "没有需要提交的变更"
+            exit 0
+          fi
+
+          git commit -m "chore: update mihomo-meta to ${{ steps.meta.outputs.latest_version }}"
+          commit_sha="$(workflow_writeback_head_sha)"
+          workflow_writeback_set_output "commit_sha" "${commit_sha}"
+          git push origin HEAD:${TARGET_BRANCH}
+
+      - name: Summarize writeback no-op result
+        if: steps.meta.outputs.need_update == 'true' && steps.writeback.outputs.commit_sha == ''
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Mihomo core update result"
+            echo
+            echo "- Status: no changes"
+            echo "- Target branch: \`${TARGET_BRANCH}\`"
+            echo "- Current version: \`${{ steps.meta.outputs.current_version }}\`"
+            echo "- Latest version: \`${{ steps.meta.outputs.latest_version }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Summarize skipped or no-op result
+        if: steps.meta.outputs.need_update != 'true'
+        run: |
+          set -euo pipefail
+
+          status="no changes"
+          if [ "${{ steps.meta.outputs.skip }}" = "true" ]; then
+            status="skipped"
+          fi
+
+          {
+            echo "## Mihomo core update result"
+            echo
+            echo "- Status: ${status}"
+            echo "- Target branch: \`${TARGET_BRANCH}\`"
+            echo "- Current version: \`${{ steps.meta.outputs.current_version }}\`"
+            if [ "${{ steps.meta.outputs.skip }}" != "true" ]; then
+              echo "- Latest version: \`${{ steps.meta.outputs.latest_version }}\`"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Send Telegram Notification
+        if: steps.meta.outputs.need_update == 'true' && steps.writeback.outputs.commit_sha != '' && env.TG_BOT_TOKEN != '' && env.TG_CHAT_ID != ''
+        run: |
+          set -euo pipefail
+
+          old_ver="${{ steps.meta.outputs.current_version }}"
+          new_ver="${{ steps.meta.outputs.latest_version }}"
+          release_time="$(TZ='Asia/Shanghai' date -d "${{ steps.meta.outputs.published_at }}" '+%Y-%m-%d %H:%M:%S')"
+          upstream_url="https://github.com/${UPSTREAM_REPO}/releases/tag/${new_ver}"
+          repo_url="https://github.com/${{ github.repository }}"
+
+          printf -v message '%s\n' \
+            "🚀 *Mihomo Meta 内核更新通知*" \
+            "━━━━━━━━━━━━━━━━━━━━" \
+            "📦 *版本变更*" \
+            "\`${old_ver}\` ➜ \`${new_ver}\`" \
+            "" \
+            "🕐 *上游发布时间*" \
+            "${release_time} (北京时间)" \
+            "━━━━━━━━━━━━━━━━━━━━" \
+            "🔗 [查看上游 Release](${upstream_url})" \
+            "🔗 [查看本仓库](${repo_url})" \
+            "" \
+            "✅ mihomo-meta/Makefile 已自动同步更新"
+
+          curl -fsSL -X POST "https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg chat_id "${TG_CHAT_ID}" --arg text "${message}" \
+              '{chat_id: $chat_id, text: $text, parse_mode: "Markdown", disable_web_page_preview: true}')" \
+            && echo "Telegram 通知发送成功" || echo "Telegram 通知发送失败"
+
+      - name: Summarize pushed result
+        if: steps.meta.outputs.need_update == 'true' && steps.writeback.outputs.commit_sha != ''
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Mihomo core update result"
+            echo
+            echo "- Status: pushed"
+            echo "- Target branch: \`${TARGET_BRANCH}\`"
+            echo "- Current version: \`${{ steps.meta.outputs.current_version }}\`"
+            echo "- Latest version: \`${{ steps.meta.outputs.latest_version }}\`"
+            echo "- Commit: \`${{ steps.writeback.outputs.commit_sha }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Summarize failed result
+        if: failure()
+        run: |
+          {
+            echo "## Mihomo core update result"
+            echo
+            echo "- Status: failed"
+            echo "- Target branch: \`${TARGET_BRANCH}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Delete Workflow Runs
+        if: always()
+        uses: ophub/delete-releases-workflows@main
+        with:
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
+          delete_releases: true
+          releases_keep_latest: 0
+          delete_tags: true
+          delete_workflows: true
+          workflows_keep_day: 0

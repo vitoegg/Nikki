@@ -1,0 +1,6 @@
+.github
+README.md
+README.zh.md
+feed.sh
+install.sh
+uninstall.sh

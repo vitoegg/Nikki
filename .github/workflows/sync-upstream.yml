@@ -1,0 +1,201 @@
+name: Sync Upstream
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: opennikki-master-writes
+  cancel-in-progress: false
+
+env:
+  GEOIP_SOURCE_URL: https://raw.githubusercontent.com/vitoegg/Provider/master/RuleSet/Extra/MosDNS/geoip.txt
+  UPSTREAM_REPO: nikkinikki-org/OpenWrt-nikki
+  UPSTREAM_REF: main
+  MIHOMO_UPSTREAM_REPO: MetaCubeX/mihomo
+  TARGET_BRANCH: master
+
+jobs:
+  sync:
+    name: Sync upstream and apply customizations
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Sync upstream and apply customizations
+        id: sync
+        run: |
+          set -eu
+          . maint/scripts/workflow-writeback.sh
+          workflow_writeback_config_git
+
+          temp_dir="$(mktemp -d)"
+          upstream_dir="$temp_dir/upstream"
+          apply_log="$temp_dir/apply.log"
+          mihomo_output="$temp_dir/mihomo-output.env"
+          customization_status="success"
+          sync_changed="false"
+          change_scope=""
+          mihomo_status="no-change"
+          first_commit=""
+          final_commit=""
+
+          cleanup() {
+            rm -rf "$temp_dir"
+          }
+
+          trap cleanup EXIT
+
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git" 2>/dev/null || \
+            git remote set-url upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch --no-tags upstream "${UPSTREAM_REF}"
+
+          upstream_sha="$(git rev-parse "upstream/${UPSTREAM_REF}")"
+          echo "upstream_sha=${upstream_sha}" >> "${GITHUB_OUTPUT}"
+
+          mkdir -p "$upstream_dir"
+          git archive "upstream/${UPSTREAM_REF}" | tar -x -C "$upstream_dir"
+
+          if ! sh maint/scripts/apply-customizations.sh "$upstream_dir" >"$apply_log" 2>&1; then
+            customization_status="conflict"
+          fi
+
+          echo "customization_status=${customization_status}" >> "${GITHUB_OUTPUT}"
+
+          if [ "$customization_status" = "conflict" ]; then
+            {
+              echo "## Upstream sync result"
+              echo
+              echo "- Status: conflict"
+              echo "- Upstream SHA: \`${upstream_sha}\`"
+              echo
+              echo "### Apply log"
+              echo '```text'
+              cat "$apply_log"
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            echo "CUSTOMIZATION_STATUS=conflict"
+            exit 1
+          fi
+
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+
+          cp -R "$upstream_dir"/. .
+
+          git add -A
+          if workflow_writeback_has_staged_changes; then
+            sync_changed="true"
+          fi
+          git reset --quiet
+
+          python3 maint/scripts/update-geoip-nft.py --url "${GEOIP_SOURCE_URL}"
+          [ ! -e maint/nikki ] || {
+            echo "Unexpected GeoIP output under maint/nikki" >&2
+            exit 1
+          }
+
+          short_upstream_sha="$(printf '%s' "${upstream_sha}" | cut -c1-7)"
+          git add -A
+          if workflow_writeback_has_staged_changes; then
+            if [ "$sync_changed" = "true" ]; then
+              change_scope="sync"
+              git commit -m "sync: upstream ${short_upstream_sha}" \
+                -m "Source: ${UPSTREAM_REPO}@${upstream_sha}" \
+                -m "Mode: apply OpenNikki customizations"
+            else
+              change_scope="geoip-only"
+              git commit -m "chore(geoip): refresh nft rules" \
+                -m "Source: ${GEOIP_SOURCE_URL}" \
+                -m "Mode: refresh GeoIP nft rules"
+            fi
+            first_commit="$(workflow_writeback_head_sha)"
+          fi
+
+          : > "$mihomo_output"
+          MAKEFILE_PATH="mihomo-meta/Makefile" \
+          UPSTREAM_REPO="${MIHOMO_UPSTREAM_REPO}" \
+          sh maint/scripts/update-mihomo-core.sh --output "$mihomo_output"
+
+          need_mihomo_update="$(awk -F= '$1 == "need_update" { print substr($0, index($0, "=") + 1); exit }' "$mihomo_output")"
+          skip_mihomo_update="$(awk -F= '$1 == "skip" { print substr($0, index($0, "=") + 1); exit }' "$mihomo_output")"
+          latest_mihomo_version="$(awk -F= '$1 == "latest_version" { print substr($0, index($0, "=") + 1); exit }' "$mihomo_output")"
+
+          if [ "${need_mihomo_update:-false}" = "true" ]; then
+            git add mihomo-meta/Makefile
+            if workflow_writeback_has_staged_changes; then
+              mihomo_status="updated"
+              git commit -m "chore: update mihomo-meta to ${latest_mihomo_version}"
+              final_commit="$(workflow_writeback_head_sha)"
+            else
+              final_commit="${first_commit}"
+            fi
+          else
+            final_commit="${first_commit}"
+            if [ "${skip_mihomo_update:-false}" = "true" ]; then
+              mihomo_status="skipped"
+            fi
+          fi
+
+          if [ -z "$final_commit" ]; then
+            {
+              echo "## Upstream sync result"
+              echo
+              echo "- Status: no changes"
+              echo "- Upstream SHA: \`${upstream_sha}\`"
+              echo "- Target branch: \`${TARGET_BRANCH}\`"
+              echo "- Mihomo update: \`${mihomo_status}\`"
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          if [ "$mihomo_status" = "updated" ]; then
+            if [ -n "$change_scope" ]; then
+              change_scope="${change_scope}+mihomo"
+            else
+              change_scope="mihomo-only"
+            fi
+          fi
+
+          git push origin HEAD:${TARGET_BRANCH}
+
+          {
+            echo "## Upstream sync result"
+            echo
+            echo "- Status: pushed"
+            echo "- Scope: \`${change_scope}\`"
+            echo "- Upstream SHA: \`${upstream_sha}\`"
+            echo "- Target branch: \`${TARGET_BRANCH}\`"
+            echo "- Mihomo update: \`${mihomo_status}\`"
+            echo "- Commit: \`${final_commit}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Summarize failed result
+        if: failure() && steps.sync.outputs.customization_status != 'conflict'
+        run: |
+          {
+            echo "## Upstream sync result"
+            echo
+            echo "- Status: failed"
+            echo "- Target branch: \`${TARGET_BRANCH}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Delete Workflow Runs
+        if: always()
+        uses: ophub/delete-releases-workflows@main
+        with:
+          gh_token: ${{ secrets.GITHUB_TOKEN }}
+          delete_releases: true
+          releases_keep_latest: 0
+          delete_tags: true
+          delete_workflows: true
+          workflows_keep_day: 0
