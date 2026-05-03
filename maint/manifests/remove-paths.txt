@@ -1,4 +1,5 @@
 .github
+mihomo-alpha
 README.md
 README.zh.md
 feed.sh
