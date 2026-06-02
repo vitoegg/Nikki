@@ -1,0 +1,12 @@
+diff --git a/nikki/files/nikki.init b/nikki/files/nikki.init
+--- a/nikki/files/nikki.init
++++ b/nikki/files/nikki.init
+@@ -417,0 +418 @@ service_started() {
++			log "QUIC" "Reject successful."
+@@ -419,0 +421 @@ service_started() {
++			log "QUIC" "Reject failed."
+diff --git a/nikki/files/ucode/hijack.ut b/nikki/files/ucode/hijack.ut
+--- a/nikki/files/ucode/hijack.ut
++++ b/nikki/files/ucode/hijack.ut
+@@ -612,0 +613 @@ table inet nikki {
++		iifname @lan_inbound_device udp dport 443 counter reject with icmpx type port-unreachable comment "QUIC Reject"

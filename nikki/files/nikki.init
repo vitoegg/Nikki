@@ -415,8 +415,10 @@ service_started() {
 		# check hijack
 		if nft list tables | grep -q nikki; then
 			log "Proxy" "Hijack successful."
+			log "QUIC" "Reject successful."
 		else
 			log "Proxy" "Hijack failed."
+			log "QUIC" "Reject failed."
 			log "App" "Exit."
 		fi
 		# dns gateway

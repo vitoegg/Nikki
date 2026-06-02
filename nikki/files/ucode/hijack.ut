@@ -608,6 +608,7 @@ table inet nikki {
 		{% for (let fwmark in bypass_fwmark): %}
 		meta mark & {{ fwmark.mask }} == {{ fwmark.mark }} counter return
 		{% endfor %}
+		iifname @lan_inbound_device udp dport 443 counter reject with icmpx type port-unreachable comment "QUIC Reject"
 		iifname @lan_inbound_device meta l4proto vmap { tcp: {% if (tcp_mode == 'tproxy'): %} jump lan_tproxy {% elif (tcp_mode == 'tun'): %} jump lan_tun {% else %} continue {% endif %}, udp: {% if (udp_mode == 'tproxy'): %} jump lan_tproxy {% elif (udp_mode == 'tun'): %} jump lan_tun {% else %} continue {% endif %} }
 	}
 	{% endif %}
