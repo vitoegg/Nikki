@@ -1,11 +1,7 @@
 name: Update Mihomo Core
 
 on:
-  schedule:
-    # 每天 北京时间 8:30 定时执行（UTC 00:30）
-    - cron: '30 0 * * *'
   workflow_dispatch:
-    # 支持手动触发
 
 permissions:
   contents: write
