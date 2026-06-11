@@ -1,12 +1,25 @@
 diff --git a/nikki/files/nikki.init b/nikki/files/nikki.init
 --- a/nikki/files/nikki.init
 +++ b/nikki/files/nikki.init
-@@ -417,0 +418 @@ service_started() {
+@@ -425,8 +425,10 @@ service_started() {
+ 		# check hijack
+ 		if nft list tables | grep -q nikki; then
+ 			log "Proxy" "Hijack successful."
 +			log "QUIC" "Reject successful."
-@@ -419,0 +421 @@ service_started() {
+ 		else
+ 			log "Proxy" "Hijack failed."
 +			log "QUIC" "Reject failed."
+ 			log "App" "Exit."
+ 		fi
+ 		# dns gateway
 diff --git a/nikki/files/ucode/hijack.ut b/nikki/files/ucode/hijack.ut
 --- a/nikki/files/ucode/hijack.ut
 +++ b/nikki/files/ucode/hijack.ut
-@@ -612,0 +613 @@ table inet nikki {
+@@ -616,6 +616,7 @@ table inet nikki {
+ 		{% for (let fwmark in bypass_fwmark): %}
+ 		meta mark & {{ fwmark.mask }} == {{ fwmark.mark }} counter return
+ 		{% endfor %}
 +		iifname @lan_inbound_device udp dport 443 counter reject with icmpx type port-unreachable comment "QUIC Reject"
+ 		iifname @lan_inbound_device meta l4proto vmap { tcp: {% if (tcp_mode == 'tproxy'): %} jump lan_tproxy {% elif (tcp_mode == 'tun'): %} jump lan_tun {% else %} continue {% endif %}, udp: {% if (udp_mode == 'tproxy'): %} jump lan_tproxy {% elif (udp_mode == 'tun'): %} jump lan_tun {% else %} continue {% endif %} }
+ 	}
+ 	{% endif %}

@@ -73,6 +73,61 @@ apply_patch_stack() {
 	done
 }
 
+line_of() {
+	awk -v pattern="$2" 'index($0, pattern) { print NR; exit }' "$1"
+}
+
+require_single_occurrence() {
+	file="$1"
+	pattern="$2"
+	label="$3"
+	count=$(grep -F -c "$pattern" "$file" || true)
+	[ "$count" = 1 ] || {
+		echo "Invalid $label occurrence count: $count" >&2
+		exit 1
+	}
+}
+
+validate_quic_reject() {
+	init_file="$TARGET_DIR/nikki/files/nikki.init"
+	hijack_file="$TARGET_DIR/nikki/files/ucode/hijack.ut"
+	quic_success='log "QUIC" "Reject successful."'
+	quic_failed='log "QUIC" "Reject failed."'
+	quic_rule='iifname @lan_inbound_device udp dport 443 counter reject with icmpx type port-unreachable comment "QUIC Reject"'
+
+	[ -f "$init_file" ] || {
+		echo "Missing target file: nikki/files/nikki.init" >&2
+		exit 1
+	}
+	[ -f "$hijack_file" ] || {
+		echo "Missing target file: nikki/files/ucode/hijack.ut" >&2
+		exit 1
+	}
+
+	require_single_occurrence "$init_file" "$quic_success" "QUIC success log"
+	require_single_occurrence "$init_file" "$quic_failed" "QUIC failed log"
+	require_single_occurrence "$hijack_file" "$quic_rule" "QUIC reject rule"
+
+	proxy_success_line=$(line_of "$init_file" 'log "Proxy" "Hijack successful."')
+	quic_success_line=$(line_of "$init_file" "$quic_success")
+	proxy_failed_line=$(line_of "$init_file" 'log "Proxy" "Hijack failed."')
+	quic_failed_line=$(line_of "$init_file" "$quic_failed")
+	app_exit_line=$(awk -v start="$proxy_failed_line" 'NR > start && index($0, "log \"App\" \"Exit.\"") { print NR; exit }' "$init_file")
+	[ "$proxy_success_line" -lt "$quic_success_line" ] && [ "$quic_success_line" -lt "$proxy_failed_line" ] && \
+		[ "$proxy_failed_line" -lt "$quic_failed_line" ] && [ "$quic_failed_line" -lt "$app_exit_line" ] || {
+		echo "Invalid QUIC log placement in nikki/files/nikki.init" >&2
+		exit 1
+	}
+
+	chain_line=$(line_of "$hijack_file" 'chain mangle_prerouting_lan {')
+	quic_rule_line=$(line_of "$hijack_file" "$quic_rule")
+	vmap_line=$(line_of "$hijack_file" 'iifname @lan_inbound_device meta l4proto vmap')
+	[ "$chain_line" -lt "$quic_rule_line" ] && [ "$quic_rule_line" -lt "$vmap_line" ] || {
+		echo "Invalid QUIC reject rule placement in nikki/files/ucode/hijack.ut" >&2
+		exit 1
+	}
+}
+
 MODE="apply"
 CHECK_WORKDIR=""
 TARGET_DIR=""
@@ -130,3 +185,6 @@ apply_patch_stack
 
 restore_custom_paths
 echo "[$MODE_LABEL] restore custom paths"
+
+validate_quic_reject
+echo "[$MODE_LABEL] validate QUIC reject"
