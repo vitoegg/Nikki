@@ -8,12 +8,13 @@ GH_TOKEN="${GH_TOKEN:-}"
 MAX_RETRIES="${MAX_RETRIES:-3}"
 RETRY_DELAY="${RETRY_DELAY:-10}"
 OUTPUT_FILE="${GITHUB_OUTPUT:-}"
-RELEASE_API_URL="${RELEASE_API_URL:-https://api.github.com/repos/${UPSTREAM_REPO}/releases/latest}"
+TARGET_VERSION="${MIHOMO_VERSION:-}"
+RELEASE_API_URL="${RELEASE_API_URL:-}"
 TARBALL_URL_TEMPLATE="${TARBALL_URL_TEMPLATE:-https://api.github.com/repos/${UPSTREAM_REPO}/tarball/%s}"
 COMMIT_API_URL_TEMPLATE="${COMMIT_API_URL_TEMPLATE:-https://api.github.com/repos/${UPSTREAM_REPO}/commits/%s}"
 
 usage() {
-	echo "Usage: sh maint/scripts/update-mihomo-core.sh [--output <file>]" >&2
+	echo "Usage: sh maint/scripts/update-mihomo-core.sh [--output <file>] [--version <version>]" >&2
 	exit 1
 }
 
@@ -90,11 +91,24 @@ while [ "$#" -gt 0 ]; do
 			OUTPUT_FILE="$2"
 			shift 2
 			;;
+		--version)
+			[ "$#" -ge 2 ] || usage
+			TARGET_VERSION="$2"
+			shift 2
+			;;
 		*)
 			usage
 			;;
 	esac
 done
+
+if [ -z "$RELEASE_API_URL" ]; then
+	if [ -n "$TARGET_VERSION" ]; then
+		RELEASE_API_URL="https://api.github.com/repos/${UPSTREAM_REPO}/releases/tags/v${TARGET_VERSION}"
+	else
+		RELEASE_API_URL="https://api.github.com/repos/${UPSTREAM_REPO}/releases/latest"
+	fi
+fi
 
 [ -f "$MAKEFILE_PATH" ] || {
 	echo "Makefile 不存在: ${MAKEFILE_PATH}" >&2
@@ -126,6 +140,7 @@ published_at="$(printf '%s' "${release_info}" | jq -r '.published_at // empty' 2
 if [ -z "${latest_version}" ] || [ -z "${published_at}" ]; then
 	append_output "skip" "true"
 	append_output "need_update" "false"
+	append_output "failure_reason" "unable to fetch release"
 	echo "无法获取上游版本信息，跳过本次更新"
 	exit 0
 fi
@@ -140,7 +155,7 @@ append_output "skip" "false"
 append_output "latest_version" "${latest_version}"
 append_output "pkg_version" "${pkg_version}"
 append_output "published_at" "${published_at}"
-echo "上游最新版本: ${latest_version}"
+echo "目标版本: ${latest_version}"
 echo "发布日期: ${published_at}"
 
 if [ "${current_version}" = "${latest_version}" ]; then

@@ -2,6 +2,11 @@ name: Update Mihomo Core
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Input mihomo core version without v'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -23,6 +28,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
       TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+      MIHOMO_VERSION: ${{ inputs.version }}
 
     steps:
       - name: Checkout repository
@@ -33,7 +39,17 @@ jobs:
       - name: Refresh mihomo-meta Makefile
         id: meta
         run: |
-          sh maint/scripts/update-mihomo-core.sh
+          set +e
+          sh maint/scripts/update-mihomo-core.sh --version "${MIHOMO_VERSION}"
+          rc="$?"
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            {
+              echo "skip=true"
+              echo "need_update=false"
+              echo "failure_reason=update command failed"
+            } >> "${GITHUB_OUTPUT}"
+          fi
 
       - name: Commit and push changes
         if: steps.meta.outputs.need_update == 'true'
@@ -66,7 +82,7 @@ jobs:
             echo "- Status: no changes"
             echo "- Target branch: \`${TARGET_BRANCH}\`"
             echo "- Current version: \`${{ steps.meta.outputs.current_version }}\`"
-            echo "- Latest version: \`${{ steps.meta.outputs.latest_version }}\`"
+            echo "- Target version: \`${{ steps.meta.outputs.latest_version }}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Summarize skipped or no-op result
@@ -85,8 +101,11 @@ jobs:
             echo "- Status: ${status}"
             echo "- Target branch: \`${TARGET_BRANCH}\`"
             echo "- Current version: \`${{ steps.meta.outputs.current_version }}\`"
-            if [ "${{ steps.meta.outputs.skip }}" != "true" ]; then
-              echo "- Latest version: \`${{ steps.meta.outputs.latest_version }}\`"
+            if [ -n "${{ steps.meta.outputs.latest_version }}" ]; then
+              echo "- Target version: \`${{ steps.meta.outputs.latest_version }}\`"
+            fi
+            if [ -n "${{ steps.meta.outputs.failure_reason }}" ]; then
+              echo "- Reason: ${{ steps.meta.outputs.failure_reason }}"
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
 
@@ -132,7 +151,7 @@ jobs:
             echo "- Status: pushed"
             echo "- Target branch: \`${TARGET_BRANCH}\`"
             echo "- Current version: \`${{ steps.meta.outputs.current_version }}\`"
-            echo "- Latest version: \`${{ steps.meta.outputs.latest_version }}\`"
+            echo "- Target version: \`${{ steps.meta.outputs.latest_version }}\`"
             echo "- Commit: \`${{ steps.writeback.outputs.commit_sha }}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
