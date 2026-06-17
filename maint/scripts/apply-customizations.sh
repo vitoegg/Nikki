@@ -8,6 +8,7 @@ PATCH_DIR="$REPO_ROOT/maint/patches"
 REMOVE_MANIFEST="$REPO_ROOT/maint/manifests/remove-paths.txt"
 RESTORE_MANIFEST="$REPO_ROOT/maint/manifests/restore-paths.txt"
 TMPDIR_ROOT="${TMPDIR:-/tmp}"
+RESTORE_SKIP_PATHS="${RESTORE_SKIP_PATHS:-}"
 
 usage() {
 	echo "Usage: sh maint/scripts/apply-customizations.sh [--check] <target-dir>" >&2
@@ -60,9 +61,22 @@ restore_custom_paths() {
 				;;
 		esac
 
+		if restore_path_is_skipped "$path"; then
+			printf '[%s] restore skipped %s\n' "$MODE_LABEL" "$path"
+			continue
+		fi
+
 		rm -rf "$TARGET_DIR/$path"
 		tar -C "$REPO_ROOT" -cf - "$path" | tar -C "$TARGET_DIR" -xf -
 	done < "$RESTORE_MANIFEST"
+}
+
+restore_path_is_skipped() {
+	path_to_check="$1"
+	for skipped_path in $RESTORE_SKIP_PATHS; do
+		[ "$path_to_check" = "$skipped_path" ] && return 0
+	done
+	return 1
 }
 
 apply_patch_stack() {

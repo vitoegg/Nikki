@@ -2,6 +2,12 @@ name: Sync Upstream
 
 on:
   workflow_dispatch:
+    inputs:
+      sync_mihomo_meta:
+        description: Confirm synchronize the mihomo-meta directory
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -15,7 +21,6 @@ env:
   GEOIP_SOURCE_URL: https://raw.githubusercontent.com/vitoegg/Provider/master/RuleSet/Extra/MosDNS/geoip.txt
   UPSTREAM_REPO: nikkinikki-org/OpenWrt-nikki
   UPSTREAM_REF: main
-  MIHOMO_UPSTREAM_REPO: MetaCubeX/mihomo
   TARGET_BRANCH: master
 
 jobs:
@@ -25,6 +30,8 @@ jobs:
     timeout-minutes: 20
     env:
       GH_TOKEN: ${{ github.token }}
+      SYNC_MIHOMO_META: ${{ inputs.sync_mihomo_meta }}
+      RESTORE_SKIP_PATHS: ${{ inputs.sync_mihomo_meta && 'mihomo-meta' || '' }}
 
     steps:
       - name: Checkout repository
@@ -42,13 +49,15 @@ jobs:
           temp_dir="$(mktemp -d)"
           upstream_dir="$temp_dir/upstream"
           apply_log="$temp_dir/apply.log"
-          mihomo_output="$temp_dir/mihomo-output.env"
           customization_status="success"
           sync_changed="false"
           change_scope=""
-          mihomo_status="no-change"
-          first_commit=""
-          final_commit=""
+          mihomo_meta_scope="preserved"
+          commit_sha=""
+
+          if [ "${SYNC_MIHOMO_META:-false}" = "true" ]; then
+            mihomo_meta_scope="upstream"
+          fi
 
           cleanup() {
             rm -rf "$temp_dir"
@@ -118,52 +127,19 @@ jobs:
                 -m "Source: ${GEOIP_SOURCE_URL}" \
                 -m "Mode: refresh GeoIP nft rules"
             fi
-            first_commit="$(workflow_writeback_head_sha)"
+            commit_sha="$(workflow_writeback_head_sha)"
           fi
 
-          : > "$mihomo_output"
-          MAKEFILE_PATH="mihomo-meta/Makefile" \
-          UPSTREAM_REPO="${MIHOMO_UPSTREAM_REPO}" \
-          sh maint/scripts/update-mihomo-core.sh --output "$mihomo_output"
-
-          need_mihomo_update="$(awk -F= '$1 == "need_update" { print substr($0, index($0, "=") + 1); exit }' "$mihomo_output")"
-          skip_mihomo_update="$(awk -F= '$1 == "skip" { print substr($0, index($0, "=") + 1); exit }' "$mihomo_output")"
-          latest_mihomo_version="$(awk -F= '$1 == "latest_version" { print substr($0, index($0, "=") + 1); exit }' "$mihomo_output")"
-
-          if [ "${need_mihomo_update:-false}" = "true" ]; then
-            git add mihomo-meta/Makefile
-            if workflow_writeback_has_staged_changes; then
-              mihomo_status="updated"
-              git commit -m "chore: update mihomo-meta to ${latest_mihomo_version}"
-              final_commit="$(workflow_writeback_head_sha)"
-            else
-              final_commit="${first_commit}"
-            fi
-          else
-            final_commit="${first_commit}"
-            if [ "${skip_mihomo_update:-false}" = "true" ]; then
-              mihomo_status="skipped"
-            fi
-          fi
-
-          if [ -z "$final_commit" ]; then
+          if [ -z "$commit_sha" ]; then
             {
               echo "## Upstream sync result"
               echo
               echo "- Status: no changes"
               echo "- Upstream SHA: \`${upstream_sha}\`"
               echo "- Target branch: \`${TARGET_BRANCH}\`"
-              echo "- Mihomo update: \`${mihomo_status}\`"
+              echo "- Mihomo meta: \`${mihomo_meta_scope}\`"
             } >> "${GITHUB_STEP_SUMMARY}"
             exit 0
-          fi
-
-          if [ "$mihomo_status" = "updated" ]; then
-            if [ -n "$change_scope" ]; then
-              change_scope="${change_scope}+mihomo"
-            else
-              change_scope="mihomo-only"
-            fi
           fi
 
           git push origin HEAD:${TARGET_BRANCH}
@@ -175,8 +151,8 @@ jobs:
             echo "- Scope: \`${change_scope}\`"
             echo "- Upstream SHA: \`${upstream_sha}\`"
             echo "- Target branch: \`${TARGET_BRANCH}\`"
-            echo "- Mihomo update: \`${mihomo_status}\`"
-            echo "- Commit: \`${final_commit}\`"
+            echo "- Mihomo meta: \`${mihomo_meta_scope}\`"
+            echo "- Commit: \`${commit_sha}\`"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: Summarize failed result
