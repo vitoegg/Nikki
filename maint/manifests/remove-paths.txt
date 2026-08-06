@@ -1,5 +1,7 @@
 .github
 mihomo-alpha
+luci-app-nikki/po/ru
+luci-app-nikki/po/zh_Hant
 README.md
 README.zh.md
 feed.sh
