@@ -34,7 +34,7 @@ def load_source(args: argparse.Namespace) -> str:
 
     request = urllib.request.Request(
         args.url,
-        headers={"User-Agent": "OpenNikki-geoip-nft-updater/1.0"},
+        headers={"User-Agent": "Nikki-geoip-nft-updater/1.0"},
     )
     with urllib.request.urlopen(request, timeout=args.timeout) as response:
         return response.read().decode("utf-8")
