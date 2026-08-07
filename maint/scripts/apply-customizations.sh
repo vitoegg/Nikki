@@ -181,7 +181,7 @@ trap cleanup EXIT INT TERM
 TARGET_DIR="$SOURCE_TARGET"
 MODE_LABEL="$MODE"
 if [ "$MODE" = "check" ]; then
-	CHECK_WORKDIR=$(mktemp -d "$TMPDIR_ROOT/opennikki-customize-check.XXXXXX")
+	CHECK_WORKDIR=$(mktemp -d "$TMPDIR_ROOT/nikki-customize-check.XXXXXX")
 	cp -R "$SOURCE_TARGET"/. "$CHECK_WORKDIR"
 	TARGET_DIR="$CHECK_WORKDIR"
 	MODE_LABEL="check"

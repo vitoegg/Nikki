@@ -72,7 +72,7 @@ sha256_file() {
 replace_makefile_var() {
 	key="$1"
 	value="$2"
-	tmp_file="$(mktemp "${TMPDIR:-/tmp}/opennikki-mihomo-makefile.XXXXXX")"
+	tmp_file="$(mktemp "${TMPDIR:-/tmp}/nikki-mihomo-makefile.XXXXXX")"
 
 	grep -Eq "^[[:space:]]*${key}:=" "$MAKEFILE_PATH" || {
 		echo "Makefile 中缺少字段: ${key}" >&2
@@ -166,7 +166,7 @@ fi
 
 echo "发现新版本，需要更新"
 
-work_dir="$(mktemp -d "${TMPDIR:-/tmp}/opennikki-mihomo-update.XXXXXX")"
+work_dir="$(mktemp -d "${TMPDIR:-/tmp}/nikki-mihomo-update.XXXXXX")"
 cleanup() {
 	rm -rf "${work_dir}"
 }

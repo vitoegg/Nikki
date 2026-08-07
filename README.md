@@ -1,8 +1,8 @@
-# OpenNikki
+# Nikki
 ✨ 基于 [`nikkinikki-org/OpenWrt-nikki`](https://github.com/nikkinikki-org/OpenWrt-nikki) 进行个性化调整的Nikki版本。
 
 ### 🖇️ 自定义修改
-1. 同步上游代码后应用自定义 OpenNikki 内容
+1. 同步上游代码后应用自定义 Nikki 内容
     > **Custom patches**: `maint/patches/`  
     > **Maintenance scripts**: `maint/scripts/`
 2. `mihomo-meta` 跟踪 [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) release version
