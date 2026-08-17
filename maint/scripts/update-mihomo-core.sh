@@ -135,9 +135,8 @@ echo "获取上游 release: ${RELEASE_API_URL}"
 
 release_info="$(curl_get "${RELEASE_API_URL}" 2>/dev/null || true)"
 latest_version="$(printf '%s' "${release_info}" | jq -r '.tag_name // empty' 2>/dev/null || true)"
-published_at="$(printf '%s' "${release_info}" | jq -r '.published_at // empty' 2>/dev/null || true)"
 
-if [ -z "${latest_version}" ] || [ -z "${published_at}" ]; then
+if [ -z "${latest_version}" ]; then
 	append_output "skip" "true"
 	append_output "need_update" "false"
 	append_output "failure_reason" "unable to fetch release"
@@ -154,9 +153,7 @@ pkg_version="${latest_version#v}"
 append_output "skip" "false"
 append_output "latest_version" "${latest_version}"
 append_output "pkg_version" "${pkg_version}"
-append_output "published_at" "${published_at}"
 echo "目标版本: ${latest_version}"
-echo "发布日期: ${published_at}"
 
 if [ "${current_version}" = "${latest_version}" ]; then
 	append_output "need_update" "false"
