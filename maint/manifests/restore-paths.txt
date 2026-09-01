@@ -2,3 +2,4 @@ README.md
 .github
 maint
 mihomo-meta
+nikki/files/scripts/dns_gateway.sh
