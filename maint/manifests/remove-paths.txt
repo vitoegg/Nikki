@@ -4,6 +4,7 @@ luci-app-nikki/po/ru
 luci-app-nikki/po/zh_Hant
 README.md
 README.zh.md
+LICENSE
 feed.sh
 install.sh
 uninstall.sh
