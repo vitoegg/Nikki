@@ -8,6 +8,25 @@
 'require tools.widgets as widgets';
 'require tools.nikki as nikki';
 
+function setAutocomplete(option, autocomplete) {
+    const renderWidget = option.renderWidget;
+
+    if (typeof renderWidget !== 'function') {
+        return;
+    }
+
+    option.renderWidget = function () {
+        const node = renderWidget.apply(this, arguments);
+        const input = node.querySelector('input');
+
+        if (input) {
+            input.setAttribute('autocomplete', autocomplete);
+        }
+
+        return node;
+    };
+}
+
 return view.extend({
     load: function () {
         return Promise.all([
@@ -124,10 +143,12 @@ return view.extend({
 
         o = s.taboption('external_control', form.Value, 'api_tls_ech_key', _('API TLS ECH Key'));
         o.placeholder = _('Unmodified');
+        setAutocomplete(o, 'off');
 
         o = s.taboption('external_control', form.Value, 'api_secret', _('API Secret'));
         o.password = true;
         o.placeholder = _('Unmodified');
+        setAutocomplete(o, 'new-password');
 
         o = s.taboption('external_control', form.ListValue, 'selection_cache', _('Save Proxy Selection'));
         o.optional = true;

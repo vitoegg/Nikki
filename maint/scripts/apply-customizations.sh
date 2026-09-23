@@ -142,6 +142,14 @@ validate_quic_reject() {
 	}
 }
 
+validate_mixin_autofill() {
+	mixin_file="$TARGET_DIR/luci-app-nikki/htdocs/luci-static/resources/view/nikki/mixin.js"
+	require_file "$mixin_file"
+	require_single_occurrence "$mixin_file" 'function setAutocomplete(' "autocomplete helper"
+	require_single_occurrence "$mixin_file" "setAutocomplete(o, 'off');" "ECH key autocomplete"
+	require_single_occurrence "$mixin_file" "setAutocomplete(o, 'new-password');" "API secret autocomplete"
+}
+
 MODE="apply"
 CHECK_WORKDIR=""
 TARGET_DIR=""
@@ -202,3 +210,6 @@ echo "[$MODE_LABEL] restore custom paths"
 
 validate_quic_reject
 echo "[$MODE_LABEL] validate QUIC reject"
+
+validate_mixin_autofill
+echo "[$MODE_LABEL] validate mixin autofill"
