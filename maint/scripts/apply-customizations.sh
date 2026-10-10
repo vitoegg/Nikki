@@ -87,6 +87,31 @@ apply_patch_stack() {
 	done
 }
 
+drop_kmod_dummy_dep() {
+	makefile="$TARGET_DIR/nikki/Makefile"
+	require_file "$makefile"
+	awk '
+		/^[ \t]*DEPENDS[ \t]*[:+]?=/ {
+			match($0, /^[ \t]*DEPENDS[ \t]*[:+]?=[ \t]*/)
+			line = substr($0, 1, RLENGTH)
+			n = split(substr($0, RLENGTH + 1), deps, /[ \t]+/)
+			sep = ""
+			for (i = 1; i <= n; i++) {
+				if (deps[i] == "" || deps[i] == "+kmod-dummy") continue
+				line = line sep deps[i]
+				sep = " "
+			}
+			$0 = line
+		}
+		{ print }
+	' "$makefile" > "$makefile.tmp"
+	mv "$makefile.tmp" "$makefile"
+	if grep -q 'kmod-dummy' "$makefile"; then
+		echo "Failed to drop kmod-dummy from nikki/Makefile" >&2
+		exit 1
+	fi
+}
+
 line_of() {
 	awk -v pattern="$2" 'index($0, pattern) { print NR; exit }' "$1"
 }
@@ -204,6 +229,9 @@ remove_upstream_paths
 echo "[$MODE_LABEL] cleanup removed paths"
 
 apply_patch_stack
+
+drop_kmod_dummy_dep
+echo "[$MODE_LABEL] drop kmod-dummy dependency"
 
 restore_custom_paths
 echo "[$MODE_LABEL] restore custom paths"
