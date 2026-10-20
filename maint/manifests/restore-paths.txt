@@ -3,3 +3,5 @@ README.md
 maint
 mihomo-meta
 nikki/files/scripts/dns_gateway.sh
+nikki/files/nftables/geoip_cn.nft
+nikki/files/nftables/geoip6_cn.nft
