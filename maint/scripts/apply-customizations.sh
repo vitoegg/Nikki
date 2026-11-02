@@ -112,6 +112,18 @@ drop_kmod_dummy_dep() {
 	fi
 }
 
+set_mihomo_build_tags() {
+	makefile="$TARGET_DIR/mihomo-meta/Makefile"
+	tags='GO_PKG_TAGS:=no_zerotier,no_easytier'
+	require_file "$makefile"
+	sed "s/^GO_PKG_TAGS:=.*/$tags/" "$makefile" > "$makefile.tmp"
+	mv "$makefile.tmp" "$makefile"
+	grep -qx "$tags" "$makefile" || {
+		echo "Failed to set GO_PKG_TAGS in mihomo-meta/Makefile" >&2
+		exit 1
+	}
+}
+
 line_of() {
 	awk -v pattern="$2" 'index($0, pattern) { print NR; exit }' "$1"
 }
@@ -235,6 +247,9 @@ echo "[$MODE_LABEL] drop kmod-dummy dependency"
 
 restore_custom_paths
 echo "[$MODE_LABEL] restore custom paths"
+
+set_mihomo_build_tags
+echo "[$MODE_LABEL] set mihomo build tags"
 
 validate_quic_reject
 echo "[$MODE_LABEL] validate QUIC reject"
