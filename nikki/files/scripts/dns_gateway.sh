@@ -36,6 +36,7 @@ apply() {
 		chain output {
 			type nat hook output priority -110; policy accept;
 			socket cgroupv2 level $MOSDNS_CGROUP_LEVEL "$MOSDNS_CGROUP" counter return comment "MosDNS bypass"
+			fib daddr type != local counter return comment "Non-local bypass"
 			meta nfproto ipv4 udp dport 53 counter redirect to :5533 comment "DNS Gateway"
 			meta nfproto ipv4 tcp dport 53 counter redirect to :5533 comment "DNS Gateway"
 			meta nfproto ipv6 udp dport 53 counter redirect to :5533 comment "DNS Gateway"
